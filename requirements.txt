@@ -12,3 +12,7 @@ pandas
 pytest
 ruff
 pre-commit
+
+
+torch_tb_profiler
+git+https://github.com/pytorch/kineto#subdirectory=tb_plugin
