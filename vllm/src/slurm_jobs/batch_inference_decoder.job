@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --job-name=qwen3_batch
+#SBATCH --partition=gpu_course
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks=1
+#SBATCH --mem 8G
+#SBATCH --cpus-per-task=2
+#SBATCH --time=00:10:00
+#SBATCH --output=vllm_batch_decoding%j.log
+
+# --- Configuration ---
+export PORT=8000
+export CONTAINER_PATH="/projects/2/managed_datasets/containers/vllm/cuda-13.0-vllm.sif"
+MODEL="Qwen/Qwen3-4B-AWQ"
+INPUT_FILE="./data/example_reports.jsonl"
+OUTPUT_FILE="./data/results_${SLURM_JOB_ID}.jsonl"
+MODE="no_think" 
+CONCURRENCY=8
+
+# --- Start vLLM Server in Background ---
+apptainer exec --nv -B "$PWD" "$CONTAINER_PATH" \
+  vllm serve "$MODEL" \
+  --port $PORT \
+  --max-num-seqs 8 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.8 &
+
+# Store the process ID of the server
+SERVER_PID=$!
+
+# --- Wait for Server to be Ready ---
+echo "Waiting for vLLM server to start on port $PORT..."
+while ! curl -s "http://localhost:$PORT/health" > /dev/null; do
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "Error: vLLM server failed to start."
+        exit 1
+    fi
+    sleep 2
+done
+echo "Server is up! Starting inference..."
+
+# --- Run Batch Inference ---
+apptainer exec --nv -B "$PWD" "$CONTAINER_PATH" \
+  python3 python_scripts/batch_inference_decoder.py \
+  --input "$INPUT_FILE" \
+  --output "$OUTPUT_FILE" \
+  --temperature 0.7 \
+  --port $PORT \
+  --mode "$MODE" \
+  --concurrency $CONCURRENCY
+
+# --- Cleanup ---
+kill $SERVER_PID

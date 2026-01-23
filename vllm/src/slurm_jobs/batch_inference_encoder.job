@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --job-name=qwen_embed_srv
+#SBATCH --partition=gpu_course
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks=1
+#SBATCH --mem 8G
+#SBATCH --cpus-per-task=2
+#SBATCH --time=00:10:00
+#SBATCH --output=vllm_batch_encoding_%j.log
+
+# --- Configuration ---
+export PORT=8000
+CONTAINER="/projects/2/managed_datasets/containers/vllm/cuda-13.0-vllm.sif"
+MODEL="Qwen/Qwen3-Embedding-0.6B"
+
+# --- 1. Start vLLM Server (Background) ---
+# Added '&' to background and fixed missing backslash on the seqs line
+apptainer exec --nv -B "$PWD" "$CONTAINER" \
+  vllm serve "$MODEL" \
+  --port $PORT \
+  --task embed \
+  --gpu-memory-utilization 0.8 \
+  --max-num-seqs 32 \
+  --max-model-len 4096 &
+
+# Store the process ID
+SERVER_PID=$!
+
+# --- 2. Wait for Server to be Ready ---
+echo "Waiting for vLLM embedding server to start on port $PORT..."
+while ! curl -s "http://localhost:$PORT/health" > /dev/null; do
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+        echo "Error: vLLM embedding server failed to start."
+        exit 1
+    fi
+    sleep 2
+done
+echo "Embedding server is up! Starting processing..."
+
+# --- 3. Run Async Client ---
+apptainer exec --nv -B "$PWD" "$CONTAINER" \
+  python3 ./python_scripts/batch_inference_encoder.py \
+  --input "./data/example_reports.jsonl" \
+  --output "./data/embeddings.pkl" \
+  --port $PORT \
+  --is_query \
+  --task_description "Given the following, what diagnosis is the text alluding to most likely? Answer as if you were an experienced expert pathologist." \
+  --concurrency 32
+
+# --- 4. Cleanup ---
+echo "Processing complete. Shutting down server..."
+kill $SERVER_PID
