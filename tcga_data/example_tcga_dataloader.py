@@ -1,6 +1,7 @@
 import pickle
 import pandas as pd
 import torch
+import json
 from torch.utils.data import Dataset, DataLoader
 
 class TCGADataset(Dataset):
@@ -14,6 +15,17 @@ class TCGADataset(Dataset):
         with open(pickle_path, 'rb') as f:
             self.embedding_data = pickle.load(f)
         
+        # 1.3 Load vLLM-preprocessed reports (text modality)
+        self.text_data = {}
+        with open("tcga_reports.jsonl", "r") as f:
+            for line in f:
+                obj = json.loads(line)
+                pid = obj.get("patient_id") or obj.get("pid")
+                text = obj.get("text") or obj.get("report") or obj.get("processed_text")
+                if pid is not None and text is not None:
+                    self.text_data[pid] = text
+
+        
         # 2. Load the labels
         self.labels_df = pd.read_csv(csv_path)
         
@@ -24,11 +36,20 @@ class TCGADataset(Dataset):
         else:
             self.class_to_idx = class_to_idx
 
-        # 4. Identify patients that exist in BOTH the embeddings and the label file
+        # # 4. Identify patients that exist in BOTH the embeddings and the label file
+        # self.valid_patient_ids = sorted(list(
+        #     set(self.embedding_data.keys()).intersection(set(self.labels_df['patient_id']))
+        # ))
+
         self.valid_patient_ids = sorted(list(
-            set(self.embedding_data.keys()).intersection(set(self.labels_df['patient_id']))
+            set(self.embedding_data.keys())
+            .intersection(set(self.labels_df['patient_id']))
+            .intersection(set(self.text_data.keys()))
         ))
+
         
+
+
         # 5. Map Patient IDs to their cancer type labels for fast lookup
         self.id_to_label = dict(zip(self.labels_df['patient_id'], self.labels_df['cancer_type']))
 
@@ -52,12 +73,15 @@ class TCGADataset(Dataset):
         
         # Convert to PyTorch Tensor
         x = torch.tensor(embedding_vector, dtype=torch.float32)
+
+        t = self.text_data[pid]
             
         # Get label and convert to integer index
         label_name = self.id_to_label[pid]
         y = torch.tensor(self.class_to_idx[label_name], dtype=torch.long)
         
-        return x, y
+        return x, t, y
+
 
 def main():
     # --- Configuration ---
@@ -80,11 +104,18 @@ def main():
     print(f"Total Patients: {len(train_dataset)}")
     print(f"Number of Classes: {len(train_dataset.class_to_idx)}")
     
-    # Peek at the first batch
-    features, labels = next(iter(train_loader))
+    # # Peek at the first batch
+    # features, texts, labels = next(iter(train_loader))
+    # print(f"\nBatch Information:")
+    # print(f"Feature shape: {features.shape} (Expected: [{BATCH_SIZE}, 768])")
+    # print(f"Labels shape:  {labels.shape}  (Expected: [{BATCH_SIZE}])")
+
+    features, texts, labels = next(iter(train_loader))
     print(f"\nBatch Information:")
     print(f"Feature shape: {features.shape} (Expected: [{BATCH_SIZE}, 768])")
+    print(f"Example text:  {texts[0][:120]}...")
     print(f"Labels shape:  {labels.shape}  (Expected: [{BATCH_SIZE}])")
+
     
     # Display the mapping to the students
     print("\nClass Mapping (first 5):")
