@@ -5,3 +5,4 @@ experiments/results/
 .env
 .DS_Store
 *.egg-info/
+data/
