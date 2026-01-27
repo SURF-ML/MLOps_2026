@@ -5,11 +5,11 @@
 #SBATCH --ntasks=1
 #SBATCH --mem 8G
 #SBATCH --cpus-per-task=2
-#SBATCH --time=00:10:00
+#SBATCH --time=01:10:00
 #SBATCH --output=vllm_batch_encoding_%j.log
 
 # --- Configuration ---
-export PORT=8000
+export PORT=$(shuf -i 10000-60000 -n 1)
 CONTAINER="/projects/2/managed_datasets/containers/vllm/cuda-13.0-vllm.sif"
 MODEL="Qwen/Qwen3-Embedding-0.6B"
 
@@ -39,8 +39,8 @@ echo "Embedding server is up! Starting processing..."
 
 # --- 3. Run Async Client ---
 apptainer exec --nv -B "$PWD" "$CONTAINER" \
-  python3 ./python_scripts/batch_inference_encoder.py \
-  --input "./data/example_reports.jsonl" \
+  python3 vllm/src/python_scripts/batch_inference_encoder.py \
+  --input "./data/results_18737214.jsonl" \
   --output "./data/embeddings.pkl" \
   --port $PORT \
   --is_query \

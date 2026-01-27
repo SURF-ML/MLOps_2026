@@ -8,12 +8,28 @@ from tqdm.asyncio import tqdm
 async def process_item(client, item, args, semaphore):
     # Determine mode-specific parameters
     # Note: These smaller models often use system prompt prefixes for mode switching
+
     raw_text = item.get("report") or item.get("response") or item.get("text") or item.get("prompt") or ""
+
+    instruction = (
+        "You are an expert pathologist. Your task is to extract ONLY the key histopathological findings "
+        "from the report below. \n"
+        "Rules:\n"
+        "1. Remove all administrative details, patient IDs, dates, signatures, headers, and footers.\n"
+        "2. Keep the medical diagnosis, tumor description, and relevant measurements.\n"
+        "3. Output ONLY the cleaned clinical summary. Do not converse.\n\n"
+        "### Example Input:\n"
+        "'Patient ID: 9920. Date: 12-Jan-2020. The specimen consists of a 3cm tumor in the left lung. \n"
+        "Diagnosis: Adenocarcinoma. Signed: Dr. X.'\n\n"
+        "### Example Output:\n"
+        "The specimen consists of a 3cm tumor in the left lung. Diagnosis: Adenocarcinoma."
+    )
+
     if args.mode == "think":
-        final_prompt = f"/think {raw_text}"
+        final_prompt = f"/think {instruction}\n\n### Report to Clean:\n{raw_text}"
         rec_temp, rec_top_p, rec_top_k = 0.6, 0.95, 20
     else:
-        final_prompt = f"/no_think {raw_text}"
+        final_prompt = f"/no_think {instruction}\n\n### Report to Clean:\n{raw_text}"
         rec_temp, rec_top_p, rec_top_k = 0.7, 0.8, 20
 
     # Apply overrides if provided

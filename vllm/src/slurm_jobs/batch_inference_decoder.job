@@ -5,24 +5,24 @@
 #SBATCH --ntasks=1
 #SBATCH --mem 32G
 #SBATCH --cpus-per-task=2
-#SBATCH --time=00:30:00
+#SBATCH --time=02:30:00
 #SBATCH --output=vllm_batch_decoding%j.log
 
 # --- Configuration ---
-export PORT=8000
+export PORT=$(shuf -i 10000-60000 -n 1)
 export CONTAINER_PATH="/projects/2/managed_datasets/containers/vllm/cuda-13.0-vllm.sif"
 MODEL="Qwen/Qwen3-4B-AWQ"
 INPUT_FILE="data/raw/tcga_reports.jsonl"
 OUTPUT_FILE="./data/results_${SLURM_JOB_ID}.jsonl"
 MODE="no_think" 
-CONCURRENCY=8
+CONCURRENCY=50
 
 # --- Start vLLM Server in Background ---
 apptainer exec --nv -B "$PWD" "$CONTAINER_PATH" \
   vllm serve "$MODEL" \
   --port $PORT \
-  --max-num-seqs 8 \
-  --max-model-len 2048 \
+  --max-num-seqs 64 \
+  --max-model-len 4096 \
   --gpu-memory-utilization 0.8 &
 
 # Store the process ID of the server
